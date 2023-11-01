@@ -1,0 +1,33 @@
+dump   		traj peptide custom ${writestep} ${sname}_cfes.lammpstrj id type xu yu zu  
+dump_modify	traj append yes 
+dump            trajF peptide custom ${writestep} ${sname}_cfes_forces.lammpstrj id type fx fy fz 
+dump_modify	trajF append yes 
+restart         1 ${sname}_cfes.restart1 ${sname}_cfes.restart2
+
+variable 	newfx atomfile newfx.dat 
+variable 	newfy atomfile newfy.dat 
+variable 	newfz atomfile newfz.dat 
+
+fix    		file all print ${writestep} "$s $T $P ${kin} ${pot} ${pepE}" append "thermo_cfes.dat" screen "no" title "#" 
+fix 		hist all print 1 "${pepE}" "hist.dat" screen "no" title "#" 
+fix 		xcoord all print 1 "c_coord[1]" "xcoord.dat" screen "no" title "#" 
+fix 		ycoord all print 1 "c_coord[2]" "ycoord.dat" screen "no" title "#" 
+fix 		zcoord all print 1 "c_coord[3]" "zcoord.dat" screen "no" title "#" 
+fix		constraint peptide shake 0.0001 20 0 m 1.0080 
+fix		pepmd peptide npt temp ${TrgtTemp} ${TrgtTemp} 100.0 iso ${TrgtPress} ${TrgtPress} 100.0 
+fix    		mom all momentum 100 linear 1 1 1 angular rescale 
+fix		qstat peptide addforce v_newfx v_newfy v_newfz 
+
+run		1 
+
+unfix		pepmd 
+unfix		mom 
+unfix		file 
+unfix		hist 
+unfix		constraint 
+unfix		xcoord
+unfix		ycoord
+unfix		zcoord
+unfix		qstat
+undump		traj 
+undump		trajF

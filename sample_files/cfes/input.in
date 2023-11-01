@@ -1,0 +1,10 @@
+TOTAL_ATOMS 	84
+equil_steps 	10000
+total_steps 	10000
+T 		310		
+m 		2
+E_min 		50
+delE 		10
+E_max 		150
+
+

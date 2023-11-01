@@ -1,0 +1,12 @@
+#!/bin/bash         
+file=$1
+outfile=$2
+LAMMPS_HOME="/home/projesh/lammps"
+CUDA_HOME="/usr/local/cuda"
+MPI_HOME="/home/projesh/openmpi-4.1.5/build_gpu/bin"
+
+cp ${file} temp.c
+cp ${outfile} temp.out
+#g++ -std=c++14 -I ./include/Eigen_3.3.1/ -L/home/projesh/lammps/src/ -L/home/projesh/lammps/lib/gpu/ -L/home/projesh/lammps/src/STUBS/ -o ${outfile} temp.c -lm -fopenmp -g -O3 -w -llammps_omp -ldl -lgpu -lmpi_stubs
+
+${MPI_HOME}/mpicxx  -std=c++14 -I ./include/Eigen_3.3.1/ -L${LAMMPS_HOME}/src/ -L${LAMMPS_HOME}/lib/gpu/ -L${LAMMPS_HOME}/src/STUBS/ -L${CUDA_HOME}/lib64 -L${CUDA_HOME}/lib64/stubs -o ${outfile} temp.c -lm -fopenmp -g3 -w -llammps_omp -ldl -lgpu -lmpi_stubs -lmpi -lpthread  -lcudart -lcuda
