@@ -31,15 +31,14 @@ variable        TrgtTemp equal 310.0
 variable        TrgtPress equal 1.0
 
 timestep	1.0
-variable	writestep equal	1000
-
-thermo_style    custom ke pe temp press density vol lx ly lz  
-thermo		${writestep}
+variable	writestep equal	100
 
 group		peptide type 1:12
-compute		E peptide pe/atom pair bond angle dihedral improper kspace 
-compute		Etot peptide reduce sum c_E 
-compute 	coord peptide property/atom x y z 
 compute         force peptide property/atom fx fy fz 
-variable	pepE equal c_Etot 
+compute    	Eall peptide pe/atom pair bond angle dihedral improper kspace
+compute    	Etot peptide reduce sum c_Eall
+variable   	pepE equal c_Etot
+
+thermo_style    custom ke pe temp press density vol lx ly lz v_pepE
+thermo		${writestep}
 #############################################################

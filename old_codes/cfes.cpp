@@ -71,7 +71,7 @@ int main(int argc, char **argv)
 		std::string command = std::string("run ")+std::to_string(tau)+std::string(" pre no post no");
 		lmp->input->one(command.c_str());
 		
-		double *PE = (double *) lammps_extract_variable(lmp,"pepE","peptide");
+		double *PE = (double *) lammps_extract_variable(lmp,"TrgtE","TrgtGrp");
 		double E = *PE;
 
 		#pragma omp parallel for shared(E, E_tot_hist, E_bins)
@@ -82,7 +82,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	lmp->input->one("unfix   pepmd");
+	lmp->input->one("unfix   md");
 	lmp->input->one("unfix   mom");
 	lmp->input->one("unfix   file");
 	lmp->input->one("unfix   constraint");
@@ -109,7 +109,7 @@ int main(int argc, char **argv)
 		//..................................................
 		double **xyz = lmp->atom->x;
 		double **force = lmp->atom->f;
-		double *PE = (double *) lammps_extract_variable(lmp,"pepE","peptide");
+		double *PE = (double *) lammps_extract_variable(lmp,"TrgtE","TrgtGrp");
 		double E = *PE;
 
 		//..................................................	
