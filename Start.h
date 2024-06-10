@@ -1,3 +1,5 @@
+#pragma once
+#include "declarations.h"
 #include "includeallglobals.h"
 
 void Start(int argc, char **argv){

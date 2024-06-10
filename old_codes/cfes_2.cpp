@@ -21,16 +21,26 @@ int main(int argc, char **argv)
 	std::ofstream probability_file;
 	probability_file.open(probability_file_address);
 
+	std::string ref_prob_file_address = getFileAddress(directory, std::string("ref_prob.dat"));
+	std::ofstream ref_prob_file;
+	ref_prob_file.open(ref_prob_file_address);
+
 //Initialization.......................................
-	double k_b, T;
-	int bins, output_steps, equil_steps, total_steps, tau, m, TOTAL_ATOMS;
-	std::string ref_Prob_file_address, atom_index_file_address;
+	double k_b, T, E_min, E_max, binwidth, E_mean_incr_percentage, E_sigma_incr_percentage, E_norm_incr_percentage, sigma_shift_parameter;
+	int output_steps, equil_steps, total_steps, tau, m, TOTAL_ATOMS;
+	std::string atom_index_file_address;
 
 	input_file >> read_string >> atom_index_file_address;
 	input_file >> read_string >> total_steps;
 	input_file >> read_string >> equil_steps;
 	input_file >> read_string >> output_steps;
-	input_file >> read_string >> ref_Prob_file_address;
+	input_file >> read_string >> E_min;
+	input_file >> read_string >> E_max;
+	input_file >> read_string >> binwidth;
+	input_file >> read_string >> E_mean_incr_percentage;
+	input_file >> read_string >> E_sigma_incr_percentage;
+	input_file >> read_string >> E_norm_incr_percentage;
+	input_file >> read_string >> sigma_shift_parameter; 
 	input_file >> read_string >> tau;
 	input_file >> read_string >> k_b;
 	input_file >> read_string >> T;
@@ -47,27 +57,31 @@ int main(int argc, char **argv)
 		Atom_ID[i] = index;
 	}
 
-	std::ifstream ref_Prob_file(ref_Prob_file_address.c_str());
-	ref_Prob_file >> read_string >> bins;
-
+	int bins = std::floor((E_max - E_min)/binwidth) + 1;
 	Vec_d E_bins; E_bins.resize(bins); E_bins.setZero();
+	Vec_d E_tot_hist_equil; E_tot_hist_equil.resize(bins); E_tot_hist_equil.setZero();
 	Vec_d E_tot_hist; E_tot_hist.resize(bins); E_tot_hist.setZero();
 	Vec_d E_Prob_ref; E_Prob_ref.resize(bins); E_Prob_ref.setZero();
 
-	for(int i = 0; i < bins; i++){
-		double e, p;
-		ref_Prob_file >> e >> p;
-		E_bins[i] = e;
-		E_Prob_ref[i] = p;
-	}
+	for(int i = 0; i < bins; i++)
+		E_bins[i] = E_min + i*binwidth;
 
-	std::cout << " TOTAL_ATOMS  "  << TOTAL_ATOMS  << std::endl;
-	std::cout << " total_steps  "  << total_steps  << std::endl;
-	std::cout << " equil_steps  "  << equil_steps  << std::endl;
-	std::cout << " output_steps "  << output_steps << std::endl;
-	std::cout << " tau 	    "  << tau 	       << std::endl;
-	std::cout << " T 	    "  << T 	       << std::endl;
-	std::cout << " m            "  << m 	       << std::endl;
+	std::cout << " TOTAL_ATOMS             "  << TOTAL_ATOMS             << std::endl;
+	std::cout << " total_steps             "  << total_steps             << std::endl;
+	std::cout << " equil_steps             "  << equil_steps             << std::endl;
+	std::cout << " output_steps            "  << output_steps            << std::endl;
+	std::cout << " E_min  		       "  << E_min  		     << std::endl;
+	std::cout << " E_max                   "  << E_max                   << std::endl;
+	std::cout << " binwidth                "  << binwidth                << std::endl;
+	std::cout << " bins                    "  << bins                    << std::endl;
+	std::cout << " E_mean_incr_percentage  "  << E_mean_incr_percentage  << std::endl;
+	std::cout << " E_sigma_incr_percentage "  << E_sigma_incr_percentage << std::endl;
+	std::cout << " E_norm_incr_percentage  "  << E_norm_incr_percentage  << std::endl;
+	std::cout << " sigma_shift_parameter   "  << sigma_shift_parameter   << std::endl;
+	std::cout << " tau 	               "  << tau                     << std::endl;
+	std::cout << " k_b 	               "  << k_b                     << std::endl;
+	std::cout << " T 	               "  << T 	                     << std::endl;
+	std::cout << " m                       "  << m 	                     << std::endl;
 
 	int new_equil_steps = std::ceil((double)equil_steps/(double)tau);
 
@@ -89,7 +103,7 @@ int main(int argc, char **argv)
 		#pragma omp parallel for shared(E, E_tot_hist, E_bins)
 		for(int j = 0; j < (bins-1); j++){	
 			if((E >= E_bins[j]) && (E < E_bins[j+1])){
-       			E_tot_hist[j]++;
+       			E_tot_hist_equil[j]++;
 			}
 		}
 	}
@@ -97,15 +111,59 @@ int main(int argc, char **argv)
 	lammps_input_file_address = getFileAddress(directory, std::string("in.lammps_equil.unfix"));
 	lmp->input->file(lammps_input_file_address.c_str());
 
+//Gaussian Approximation...............................
+
+	double E_mean = 0;
+	double E_sigma = 0;
+	double E_norm = 0;
+	Vec_d E_Prob = E_tot_hist_equil/E_tot_hist_equil.sum(); 
+
+	for(int i = 0; i < bins; i++)
+		E_mean += E_bins[i]*E_Prob[i];
+
+	for(int i = 0; i < bins; i++)
+		E_sigma += (pow((E_bins[i] - E_mean), 2))*E_Prob[i];
+
+	E_sigma = sqrt(E_sigma);
+
+//	for(int i = 0; i < bins; i++)
+//		E_norm += exp(-pow(((E_bins[i] - E_mean)/(sqrt(2.0)*E_sigma)), 2));		
+//
+//	E_norm = 1.0/E_norm;
+
+	E_norm = E_Prob.maxCoeff();
+
+	double P_shift = E_norm*exp(-pow(((sigma_shift_parameter*E_sigma)/(sqrt(2.0)*E_sigma)), 2));
+
+	double E_mean_new = E_mean*(100+E_mean_incr_percentage)/100;
+	double E_sigma_new = E_sigma*(100+E_sigma_incr_percentage)/100;
+	double E_norm_new = E_norm*(100+E_norm_incr_percentage)/100 - P_shift;
+	
+	std::cout << " E_mean  " << E_mean  << " E_mean_new  " << E_mean_new  << std::endl;
+	std::cout << " E_sigma " << E_sigma << " E_sigma_new " << E_sigma_new << std::endl;
+	std::cout << " E_norm  " << E_norm  << " E_norm_new  " << E_norm_new + P_shift  << std::endl;
+	std::cout << " P_shift " << P_shift << std::endl;
+
+	ref_prob_file << "# E   P" << std::endl;
+	for(int i = 0; i < bins; i++){
+		E_Prob_ref[i] = E_norm_new*exp(-pow(((E_bins[i] - E_mean_new)/(sqrt(2.0)*E_sigma_new)), 2)) + P_shift;
+		ref_prob_file << E_bins[i] << "   " << E_Prob_ref[i] << std::endl;
+		E_tot_hist[i] = std::floor(E_Prob[i]*tau);
+	}
+		
 //CFES code............................................	
 	std::cout << " Initializing CFES ... " << std::endl;
 
+	double E_factor = 0;
+	double dE_factor = 0;
+	double P_factor = 0;
 	double old_E_factor = 0;
+
 	Mat_d old_xyz; old_xyz.resize(TOTAL_ATOMS, 3); old_xyz.setZero();
 	lammps_input_file_address = getFileAddress(directory, std::string("in.lammps_cfes"));
 	lmp->input->file(lammps_input_file_address.c_str());
 	lmp->input->one("run 0");
-	e_factor_file << "# 1.Step  2.Energy  3.Probability  4.E_factor  5.E_factor/(k_B*T)  6.dE_factor " << std::endl;
+	e_factor_file << "# 1.Step  2.Energy  3.Probability  4.E_factor  5.E_factor/(k_b*T)  6.dE_factor " << std::endl;
 
 	//Main loop...
 	for (int i = 0; i < total_steps; i++){
@@ -135,30 +193,39 @@ int main(int argc, char **argv)
 			}
 		}
 		}
-		Vec_d E_Prob = E_tot_hist/E_tot_hist.sum(); 
+		E_Prob = E_tot_hist/E_tot_hist.sum(); 
 
 		//..................................................	
 		//CFES bias
 		//..................................................
-		double E_factor = 0;
-		double dE_factor = 0;
-		double P_factor = 0;
 	
+		if(i % tau == 0){
 		if((E >= E_bins[0]) && (E <= E_bins[bins-1])){
 		P_factor = std::pow((E_Prob[E_id]/E_Prob_ref[E_id]), (m-1));
 		if(P_factor < 1){
-		E_factor = -(k_B*T)*std::log(1 - P_factor);
+		E_factor = -(k_b*T)*std::log(1.0 - P_factor);
 		dE_factor = (E_factor - old_E_factor);
 		}
-		else if(i % tau == 0) 
-		     std::cout << " WARNING ! Probability " << E_Prob[E_id] 
-		   	       << " at step " << i*tau 
-			       << " is larger than the reference probability " << E_Prob_ref[E_id] << std::endl;	
+		else {
+		E_factor = 0;
+		dE_factor = 0;
+		P_factor = 0;
+
+		std::cout << " WARNING ! Probability " << E_Prob[E_id] 
+		          << " at step " << i*tau 
+			  << " is larger than the reference probability " << E_Prob_ref[E_id] << std::endl;	
 		}
-		else if(i % tau == 0)
-		     std::cout << " WARNING ! Energy " << E 
-			       << " is outside the range " 
-			       << E_bins[0] << " - " << E_bins[bins-1] << std::endl;
+		}
+		else {
+		E_factor = 0;
+		dE_factor = 0;
+		P_factor = 0;
+
+		std::cout << " WARNING ! Energy " << E 
+		          << " is outside the range " 
+		          << E_bins[0] << " - " << E_bins[bins-1] << std::endl;
+		}
+		}
 
 		#pragma omp parallel for shared(xyz, old_xyz, force)
 		for(int i = 0; i < TOTAL_ATOMS; i++){
@@ -166,8 +233,8 @@ int main(int argc, char **argv)
 
 			for(int d = 0; d < 3; d++){
 				double dx = xyz[id][d] - old_xyz(id, d);
-				if((i > 0) && (dx > 0) && (i % tau == 0))
-				force[id][d] += -dE_factor/(TOTAL_ATOMS*dx);
+				if((i > 0) && (dx > 0))
+				force[id][d] += -dE_factor/(3*TOTAL_ATOMS*dx*tau);
 				old_xyz(id, d) = xyz[id][d];
 			}
 		}
@@ -178,7 +245,7 @@ int main(int argc, char **argv)
 		//..................................................
 		if(i % output_steps == 0){
 		e_factor_file << i << "  " << E << "  " << E_Prob[E_id] << "  " << E_factor 
-			      << "  " << E_factor/(k_B*T) << "  " << dE_factor << std::endl;
+			      << "  " << E_factor/(k_b*T) << "  " << dE_factor << std::endl;
 		for(int j = 0; j < bins; j++)
 			probability_file << E_bins[j] << "  " << E_Prob[j] << std::endl;
 		probability_file << "\n" << std::endl;
