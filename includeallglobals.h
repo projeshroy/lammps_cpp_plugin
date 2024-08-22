@@ -369,6 +369,17 @@ int binary_search_array(T& value, Eigen::Matrix<T, Eigen::Dynamic, 1>& ref_array
 	return value_id;
 }
 
+template<class T>
+int presorted_search_array(T& value, T& array_min, T& array_max, T& bin_width){
+	//To be used for equispaced array.
+	
+	int value_id = sqrt(-1);
+	if((value >= array_min) && (value <= array_max))
+	value_id = std::round((double)(value - array_min)/(double)bin_width);
+
+	return value_id;
+}
+
 double round(double& x, int n){
 	int d = 0;
     	if( (x * pow(10, n + 1)) - (10*(std::floor(x * pow(10, n))) ) > 4) 

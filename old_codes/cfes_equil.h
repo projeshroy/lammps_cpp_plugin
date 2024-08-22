@@ -28,6 +28,14 @@ void equilibrate(){
 		int E_id = presorted_search_array<double>(E, E_min, E_max, binwidth);
 		if(!std::isnan(E_id))
 		E_tot_hist_equil[E_id]++;
+/*		
+		#pragma omp parallel for shared(E, E_tot_hist, E_bins)
+		for(int j = 0; j < (bins-1); j++){	
+			if((E >= E_bins[j]) && (E < E_bins[j+1])){
+       			E_tot_hist_equil[j]++;
+			}
+		}
+*/
 	}
 
 	lammps_input_file_address = getFileAddress(directory, std::string("in.lammps_equil.unfix"));
@@ -106,6 +114,17 @@ void zeta_increment(){
 		int E_id = presorted_search_array<double>(E, E_min, E_max, binwidth);
 		if(!std::isnan(E_id))
 		E_tot_hist[E_id]++;
+		
+/*
+		#pragma omp parallel for shared(E, E_tot_hist, E_bins, E_id)	
+		for(int j = 0; j < (bins-1); j++){	
+			if((E >= E_bins[j])&&(E < E_bins[j+1])){
+       			E_tot_hist[j]++;
+			E_id = j;
+			}
+		}
+*/
+
 		E_Prob = E_tot_hist/E_tot_hist.sum(); 
 
 		//==================================================

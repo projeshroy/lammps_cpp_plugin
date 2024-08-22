@@ -1,194 +1,212 @@
+#include "cfes.h"
 #include "Start.h"
+#include "get_ref_probs.h"
+#include "entropy_bath.h"
+#include "cfes_main.h"
+#include "cfes_equil.h"
+#include "get_inputs.h"
 
 int main(int argc, char **argv)
 {
-//LAMMPS initialization................................
-	std::string directory = std::string("./");
+	//==================================================
+	//LAMMPS initialization
+	//==================================================
+
+	directory = std::string("./");
+	MPI_Init(&argc, &argv);
+	MPI_Comm_size(MPI_COMM_WORLD, &mpi_total);
+	MPI_Comm_rank(MPI_COMM_WORLD, &mpi_id);
 	Start(argc, argv);
 
-//Files.................................................
+	//==================================================
+	//Files
+	//==================================================
+
 	std::string lammps_input_file_address = getFileAddress(directory, std::string("in.lammps"));
 	lmp->input->file(lammps_input_file_address.c_str());
-	
+		
 	std::string input_file_address = getFileAddress(directory, std::string("input.in"));
-	std::ifstream input_file(input_file_address.c_str());
+	input_file.open(input_file_address.c_str());
 
+	if(mpi_id == 0){
 	std::string e_factor_file_address = getFileAddress(directory, std::string("E_factor.dat"));
-	std::ofstream e_factor_file;
-	e_factor_file.open(e_factor_file_address);
+	e_factor_file.open(e_factor_file_address, std::ios::out | std::ios::app);
+
+	std::string e_factor_bath_file_address = getFileAddress(directory, std::string("E_factor_bath.dat"));
+	e_factor_bath_file.open(e_factor_bath_file_address, std::ios::out | std::ios::app);
+
+	std::string probability_equil_file_address = getFileAddress(directory, std::string("Probability_equil.dat"));
+	probability_equil_file.open(probability_equil_file_address, std::ios::out | std::ios::app);
 
 	std::string probability_file_address = getFileAddress(directory, std::string("Probability.dat"));
-	std::ofstream probability_file;
-	probability_file.open(probability_file_address);
+	probability_file.open(probability_file_address, std::ios::out | std::ios::app);
 
-//Initialization.......................................
-	double k_b, T;
-	int bins, output_steps, equil_steps, total_steps, tau, m, TOTAL_ATOMS;
-	std::string ref_Prob_file_address, atom_index_file_address;
+	std::string probability_final_file_address = getFileAddress(directory, std::string("Probability_final.dat"));
+	probability_final_file.open(probability_final_file_address, std::ios::out | std::ios::app);
 
-	input_file >> read_string >> atom_index_file_address;
-	input_file >> read_string >> total_steps;
-	input_file >> read_string >> equil_steps;
-	input_file >> read_string >> output_steps;
-	input_file >> read_string >> ref_Prob_file_address;
-	input_file >> read_string >> tau;
-	input_file >> read_string >> k_b;
-	input_file >> read_string >> T;
-	input_file >> read_string >> m;
-
-	std::ifstream atom_index_file(atom_index_file_address.c_str());
-	atom_index_file >> read_string >> TOTAL_ATOMS;
-
-	Vec_i Atom_ID; Atom_ID.resize(TOTAL_ATOMS); Atom_ID.setZero();
-
-	for(int i = 0; i < TOTAL_ATOMS; i++){
-		double index;
-		atom_index_file >> index;
-		Atom_ID[i] = index;
+	std::string ref_prob_file_address = getFileAddress(directory, std::string("ref_prob.dat"));
+	ref_prob_file.open(ref_prob_file_address, std::ios::out | std::ios::app);
 	}
 
-	std::ifstream ref_Prob_file(ref_Prob_file_address.c_str());
-	ref_Prob_file >> read_string >> bins;
+	//==================================================
+	//Initialization
+	//==================================================
 
-	Vec_d E_bins; E_bins.resize(bins); E_bins.setZero();
-	Vec_d E_tot_hist; E_tot_hist.resize(bins); E_tot_hist.setZero();
-	Vec_d E_Prob_ref; E_Prob_ref.resize(bins); E_Prob_ref.setZero();
+	int step = 0;
+	get_inputs();
 
-	for(int i = 0; i < bins; i++){
-		double e, p;
-		ref_Prob_file >> e >> p;
-		E_bins[i] = e;
-		E_Prob_ref[i] = p;
+	if(!restart){
+	equilibrate();
+	get_ref_probs(step);
+	zeta_increment();
 	}
 
-	std::cout << " TOTAL_ATOMS  "  << TOTAL_ATOMS  << std::endl;
-	std::cout << " total_steps  "  << total_steps  << std::endl;
-	std::cout << " equil_steps  "  << equil_steps  << std::endl;
-	std::cout << " output_steps "  << output_steps << std::endl;
-	std::cout << " tau 	    "  << tau 	       << std::endl;
-	std::cout << " T 	    "  << T 	       << std::endl;
-	std::cout << " m            "  << m 	       << std::endl;
+	entropy_bath_initialize(zeta_S_ref, zeta_S_ref_shift);
+	if((debug) && (mpi_id == 0))
+	std::cout << " Initial Delta_s " << get_Delta_s() << " zeta_S " << zeta_S_ref << std::endl;
 
-	int new_equil_steps = std::ceil((double)equil_steps/(double)tau);
+	//==================================================
+	//CFES
+	//==================================================
 
-//Equilibration phase..................................
-	std::cout << "Starting Equilibration ... " << std::endl;
-
-	lammps_input_file_address = getFileAddress(directory, std::string("in.lammps_equil"));
-	lmp->input->file(lammps_input_file_address.c_str());
-	lmp->input->one("run 0");
-
-	for(int i = 0; i < new_equil_steps; i++){
-		print_progress_bar<int>(i, new_equil_steps, 10);
-		std::string command = std::string("run ")+std::to_string(tau)+std::string(" pre no post no");
-		lmp->input->one(command.c_str());
-		
-		double *PE = (double *) lammps_extract_variable(lmp,"TrgtE","TrgtGrp");
-		double E = *PE;
-		
-		#pragma omp parallel for shared(E, E_tot_hist, E_bins)
-		for(int j = 0; j < (bins-1); j++){	
-			if((E >= E_bins[j]) && (E < E_bins[j+1])){
-       			E_tot_hist[j]++;
-			}
-		}
-	}
-
-	lammps_input_file_address = getFileAddress(directory, std::string("in.lammps_equil.unfix"));
-	lmp->input->file(lammps_input_file_address.c_str());
-
-//CFES code............................................	
+	if(mpi_id == 0)
 	std::cout << " Initializing CFES ... " << std::endl;
 
-	double old_E_factor = 0;
+	E_factor = 0;
+	dE_factor_orig = 0;
+	dE_factor = 0;
+	P_factor = 0;
+	old_E_factor = 0;
+
 	Mat_d old_xyz; old_xyz.resize(TOTAL_ATOMS, 3); old_xyz.setZero();
+
 	lammps_input_file_address = getFileAddress(directory, std::string("in.lammps_cfes"));
+	if(restart){
+	std::string command = std::string("reset_timestep  ") + std::to_string(restart_from_step);
+	lmp->input->one(command.c_str());
+	}
 	lmp->input->file(lammps_input_file_address.c_str());
 	lmp->input->one("run 0");
-	e_factor_file << "# 1.Step  2.Energy  3.Probability  4.E_factor  5.E_factor/(k_B*T)  6.dE_factor " << std::endl;
 
-	//Main loop...
-	for (int i = 0; i < total_steps; i++){
-		print_progress_bar<int>(i, total_steps, 10);
+	if((!restart) && (mpi_id == 0)){
+	e_factor_file << "# 1.Step  2.Energy  3.P_factor  4.E_factor  5.E_factor/(k_b*T)  6.dE_factor_orig   7.dE_factor " << std::endl;
+	e_factor_bath_file << "# 1.Step  2.Delta_s  3.C_Q  4.zeta_S " << std::endl;
+	}
+
+	//==================================================
+	//Main loop
+	//==================================================
+
+	for (step = 0; step < total_steps; step++){
+		if(mpi_id == 0)
+		print_progress_bar<int>(step, total_steps, 10);
+
 		std::string command = std::string("run 1 pre no post no");
 		lmp->input->one(command.c_str());
 		
-		//..................................................	
+		//==================================================
 		//LAMMPS data
-		//..................................................
+		//==================================================
+
 		double **xyz = lmp->atom->x;
 		double **force = lmp->atom->f;
 		double *PE = (double *) lammps_extract_variable(lmp,"TrgtE","TrgtGrp");
-		double E = *PE;
+		E = *PE;
 
-		//..................................................	
-		//Update histogram
-		//..................................................
-		int E_id = 0;
+		//==================================================
+		//Update histogram and bath
+		//==================================================
 
-		if((i > 0) && (i % tau == 0)){
+		int E_id = presorted_search_array<double>(E, E_min, E_max, binwidth);
+		if(!std::isnan(E_id)){
+		E_tot_hist[E_id]++;
+		E_tot_prodution_hist[E_id]++;
+		}
+/*
 		#pragma omp parallel for shared(E, E_tot_hist, E_bins, E_id)
 		for(int j = 0; j < (bins-1); j++){	
 			if((E >= E_bins[j])&&(E < E_bins[j+1])){
        			E_tot_hist[j]++;
+			E_tot_prodution_hist[j]++;
 			E_id = j;
 			}
 		}
-		}
-		Vec_d E_Prob = E_tot_hist/E_tot_hist.sum(); 
+*/
+		E_Prob = E_tot_hist/E_tot_hist.sum(); 
+		
+		//==================================================
+		//Apply CFES bias
+		//==================================================
 
-		//..................................................	
-		//CFES bias
-		//..................................................
-		double E_factor = 0;
-		double dE_factor = 0;
-		double P_factor = 0;
+		double zeta_S = entropy_bath(step, zeta_S_ref, zeta_S_ref_shift, tau);
+		cfes_main(step, zeta_S, E_id);
 	
-		if((E >= E_bins[0]) && (E <= E_bins[bins-1])){
-		P_factor = std::pow((E_Prob[E_id]/E_Prob_ref[E_id]), (m-1));
-		if(P_factor < 1){
-		E_factor = -(k_B*T)*std::log(1 - P_factor);
-		dE_factor = (E_factor - old_E_factor);
-		}
-		else if(i % tau == 0) 
-		     std::cout << " WARNING ! Probability " << E_Prob[E_id] 
-		   	       << " at step " << i*tau 
-			       << " is larger than the reference probability " << E_Prob_ref[E_id] << std::endl;	
-		}
-		else if(i % tau == 0)
-		     std::cout << " WARNING ! Energy " << E 
-			       << " is outside the range " 
-			       << E_bins[0] << " - " << E_bins[bins-1] << std::endl;
+		//==================================================
+		//Update force
+		//==================================================
 
-		#pragma omp parallel for shared(xyz, old_xyz, force)
-		for(int i = 0; i < TOTAL_ATOMS; i++){
-			int id = Atom_ID[i]-1;
+		#pragma omp parallel for shared(xyz, old_xyz, force, dE_factor)
+		for(int a = 0; a < TOTAL_ATOMS; a++){
+			int id = Atom_ID[a]-1;
+			double dr_mod = 0;
+
+			for(int d = 0; d < 3; d++)
+				dr_mod += pow((xyz[id][d] - old_xyz(id, d)), 2);
+
+			dr_mod = sqrt(dr_mod);
 
 			for(int d = 0; d < 3; d++){
 				double dx = xyz[id][d] - old_xyz(id, d);
-				if((i > 0) && (dx > 0) && (i % tau == 0))
-				force[id][d] += -dE_factor/(TOTAL_ATOMS*dx);
+
+				if(step > 0){
+				if((dr_mod > 0) && (!std::isinf(dr_mod)) && (!std::isnan(dr_mod)))
+				force[id][d] += (-dE_factor/(double(TOTAL_ATOMS)*dr_mod))*(dx/dr_mod);
+				else{	
+				if((debug) && (mpi_id == 0))
+				std::cout << " WARNING ! particle did not move at step " << step << " ! " 
+					  << " dr_mod = " << dr_mod << std::endl;
+				throw std::runtime_error(std::string("CFES simulation failed!"));
+				}
+				}
 				old_xyz(id, d) = xyz[id][d];
 			}
-		}
-		old_E_factor = E_factor;
-
-		//..................................................	
+		}	
+		//==================================================
 		//Output
-		//..................................................
-		if(i % output_steps == 0){
-		e_factor_file << i << "  " << E << "  " << E_Prob[E_id] << "  " << E_factor 
-			      << "  " << E_factor/(k_B*T) << "  " << dE_factor << std::endl;
-		for(int j = 0; j < bins; j++)
-			probability_file << E_bins[j] << "  " << E_Prob[j] << std::endl;
-		probability_file << "\n" << std::endl;
-		}
-		}
+		//==================================================
 
+		if(mpi_id == 0){
+		if((step+restart_from_step) % output_steps == 0){
+		double C_Q = get_C_Q();
+		e_factor_file << std::setprecision(8) 
+			      << step+restart_from_step << "  " << E << "  " << P_factor << "  " 
+			      << E_factor << "  " << E_factor/(k_b*T) << "  " 
+			      << dE_factor_orig << "  " << dE_factor << std::endl;
+
+		e_factor_bath_file << std::setprecision(8) 
+				   << step+restart_from_step << "  " << Delta_s << "  " 
+				   << C_Q << "  " << zeta_S << std::endl;
+
+		for(int j = 0; j < bins; j++)
+			probability_file << std::setprecision(8) 
+				         << E_bins[j] << "  " << E_Prob[j] << std::endl;
+			
+		probability_file << "\n" << std::endl;
+		}}
+		//==================================================
+		}
+	
 	lammps_input_file_address = getFileAddress(directory, std::string("in.lammps_cfes.unfix"));
 	lmp->input->file(lammps_input_file_address.c_str());
 
-//......................................
+	for(int j = 0; j < bins; j++)
+		probability_final_file  << std::setprecision(8) 
+			         	<< E_bins[j] << "  " << E_tot_prodution_hist[j]/E_tot_prodution_hist.sum() << std::endl;
+			
+	probability_final_file << "\n" << std::endl;
+
+//==================================================
+
 	delete lmp;
 	MPI_Finalize();
 }

@@ -33,11 +33,11 @@
 #include "EigenMultiDimArray.h"
 
 #define LAMMPS_LIB_MPI
-#include "/home/projesh/lammps/src/lammps.h"
-#include "/home/projesh/lammps/src/library.h"
-#include "/home/projesh/lammps/src/input.h"
-#include "/home/projesh/lammps/src/atom.h"
-#include "/home/projesh/openmpi-4.1.5/build_gpu/include/mpi.h"
+#include <lammps.h>
+#include <library.h>
+#include <input.h>
+#include <atom.h>
+#include <mpi.h>
 
 using namespace LAMMPS_NS;
 

@@ -1,9 +1,10 @@
 #include "cfes.h"
 #include "Start.h"
 #include "get_ref_probs.h"
+#include "entropy_bath.h"
+#include "cfes_main.h"
 #include "cfes_equil.h"
 #include "get_inputs.h"
-#include "entropy_bath.h"
 
 int main(int argc, char **argv)
 {
@@ -12,6 +13,9 @@ int main(int argc, char **argv)
 	//==================================================
 
 	directory = std::string("./");
+	MPI_Init(&argc, &argv);
+	MPI_Comm_size(MPI_COMM_WORLD, &mpi_total);
+	MPI_Comm_rank(MPI_COMM_WORLD, &mpi_id);
 	Start(argc, argv);
 
 	//==================================================
@@ -24,20 +28,25 @@ int main(int argc, char **argv)
 	std::string input_file_address = getFileAddress(directory, std::string("input.in"));
 	input_file.open(input_file_address.c_str());
 
+	if(mpi_id == 0){
 	std::string e_factor_file_address = getFileAddress(directory, std::string("E_factor.dat"));
-	e_factor_file.open(e_factor_file_address);
+	e_factor_file.open(e_factor_file_address, std::ios::out | std::ios::app);
 
 	std::string e_factor_bath_file_address = getFileAddress(directory, std::string("E_factor_bath.dat"));
-	e_factor_bath_file.open(e_factor_bath_file_address);
+	e_factor_bath_file.open(e_factor_bath_file_address, std::ios::out | std::ios::app);
+
+	std::string probability_equil_file_address = getFileAddress(directory, std::string("Probability_equil.dat"));
+	probability_equil_file.open(probability_equil_file_address, std::ios::out | std::ios::app);
 
 	std::string probability_file_address = getFileAddress(directory, std::string("Probability.dat"));
-	probability_file.open(probability_file_address);
+	probability_file.open(probability_file_address, std::ios::out | std::ios::app);
 
-	std::string probability_bath_file_address = getFileAddress(directory, std::string("Probability_bath.dat"));
-	probability_bath_file.open(probability_bath_file_address);
+	std::string probability_final_file_address = getFileAddress(directory, std::string("Probability_final.dat"));
+	probability_final_file.open(probability_final_file_address, std::ios::out | std::ios::app);
 
 	std::string ref_prob_file_address = getFileAddress(directory, std::string("ref_prob.dat"));
-	ref_prob_file.open(ref_prob_file_address);
+	ref_prob_file.open(ref_prob_file_address, std::ios::out | std::ios::app);
+	}
 
 	//==================================================
 	//Initialization
@@ -45,37 +54,53 @@ int main(int argc, char **argv)
 
 	int step = 0;
 	get_inputs();
+
+	if(!restart){
 	equilibrate();
 	get_ref_probs(step);
-	entropy_bath_initialize();
+	zeta_increment();
+	}
+
+	entropy_bath_initialize(zeta_S_ref, zeta_S_ref_shift);
+	if((debug) && (mpi_id == 0))
+	std::cout << " Initial Delta_s " << get_Delta_s() << " zeta_S " << zeta_S_ref << std::endl;
 
 	//==================================================
 	//CFES
 	//==================================================
 
+	if(mpi_id == 0)
 	std::cout << " Initializing CFES ... " << std::endl;
 
 	E_factor = 0;
-	E_factor_bath = 0;
 	dE_factor_orig = 0;
 	dE_factor = 0;
 	P_factor = 0;
-	P_factor_bath = 0;
 	old_E_factor = 0;
 
 	Mat_d old_xyz; old_xyz.resize(TOTAL_ATOMS, 3); old_xyz.setZero();
+
 	lammps_input_file_address = getFileAddress(directory, std::string("in.lammps_cfes"));
+	if(restart){
+	std::string command = std::string("reset_timestep  ") + std::to_string(restart_from_step);
+	lmp->input->one(command.c_str());
+	}
 	lmp->input->file(lammps_input_file_address.c_str());
 	lmp->input->one("run 0");
+
+	if((!restart) && (mpi_id == 0)){
 	e_factor_file << "# 1.Step  2.Energy  3.P_factor  4.E_factor  5.E_factor/(k_b*T)  6.dE_factor_orig   7.dE_factor " << std::endl;
-	e_factor_bath_file << "# 1.Step  2.Energy  3.P_factor  4.E_factor  5.E_factor/(k_b*T)  6.C_Q_ref  7.C_Q  8.lambda_S " << std::endl;
+	e_factor_bath_file << "# 1.Step  2.Delta_s  3.C_Q  4.zeta_S " << std::endl;
+	}
 
 	//==================================================
 	//Main loop
 	//==================================================
 
 	for (step = 0; step < total_steps; step++){
+		if(mpi_id == 0)
 		print_progress_bar<int>(step, total_steps, 10);
+
 		std::string command = std::string("run 1 pre no post no");
 		lmp->input->one(command.c_str());
 		
@@ -92,67 +117,20 @@ int main(int argc, char **argv)
 		//Update histogram and bath
 		//==================================================
 
-		int E_id = 0;
-
-		#pragma omp parallel for shared(E, E_tot_hist, E_bins, E_id)
-		for(int j = 0; j < (bins-1); j++){	
-			if((E >= E_bins[j])&&(E < E_bins[j+1])){
-       			E_tot_hist[j]++;
-			E_id = j;
-			}
+		int E_id = presorted_search_array<double>(E, E_min, E_max, binwidth);
+		if(!std::isnan(E_id)){
+		E_tot_hist[E_id]++;
+		E_tot_prodution_hist[E_id]++;
 		}
 		E_Prob = E_tot_hist/E_tot_hist.sum(); 
-		if((mode == std::string("dynamic")) && 
-		   (step % sigma_shift_parameter_steps == 0))
-		get_ref_probs(step);		
 		
-		if(m > 0)
-		entropy_bath(step);
-
 		//==================================================
-		//CFES bias
+		//Apply CFES bias
 		//==================================================
-		
-		E_factor = 0;
-		dE_factor_orig = 0;
-		dE_factor = 0;
-		P_factor = 0;
 
-
-		if( m > 0) {
-		if((E >= E_bins[0]) && (E <= E_bins[bins-1])){
-		P_factor = (double)m*lambda_S*std::pow((E_Prob[E_id]/E_Prob_ref[E_id]), (m-1));
-		//make sure lambda_S is a positive number!
-		
-		if(P_factor < 1){
-		E_factor = -(TOTAL_ATOMS*k_b*T)*std::log(1.0 - P_factor);
-		dE_factor_orig = (E_factor - old_E_factor);
-		dE_factor = dE_factor_orig;
-
-		if(sqrt(dE_factor_orig*dE_factor_orig) > (max_dE*TOTAL_ATOMS*k_b*T))
-		dE_factor = (dE_factor_orig/sqrt(dE_factor_orig*dE_factor_orig))*max_dE*TOTAL_ATOMS*k_b*T;
-		}
-		else {
-		E_factor = (TOTAL_ATOMS*k_b*T)*std::log(1.0 + P_factor);
-		dE_factor_orig = (E_factor - old_E_factor);
-		dE_factor = dE_factor_orig;
-
-		if(sqrt(dE_factor_orig*dE_factor_orig) > (max_dE*TOTAL_ATOMS*k_b*T))
-		dE_factor = (dE_factor_orig/sqrt(dE_factor_orig*dE_factor_orig))*max_dE*TOTAL_ATOMS*k_b*T;
-
-		std::cout << " WARNING ! Probability factor " << P_factor << " greater than 1 ! " << " at step " << step
-			  << " Actual pobability: " << E_Prob[E_id] << " Reference probability: " << E_Prob_ref[E_id] << std::endl;	
-                }
-		}
-		else {
-		std::cout << " WARNING ! Energy " << E 
-		          << " is outside the range " 
-		          << E_bins[0] << " - " << E_bins[bins-1] << " at step " << step << std::endl;
-		}
-		}
-
-		old_E_factor = E_factor;
-
+		double zeta_S = entropy_bath(step, zeta_S_ref, zeta_S_ref_shift, tau);
+		cfes_main(step, zeta_S, E_id);
+	
 		//==================================================
 		//Update force
 		//==================================================
@@ -169,44 +147,56 @@ int main(int argc, char **argv)
 
 			for(int d = 0; d < 3; d++){
 				double dx = xyz[id][d] - old_xyz(id, d);
-				double dx_mod = sqrt(dx*dx);
 
-				if((step > 0) && (step % tau == 0)){
-				if((dx_mod > 0) && (dr_mod > 0))
+				if(step > 0){
+				if((dr_mod > 0) && (!std::isinf(dr_mod)) && (!std::isnan(dr_mod)))
 				force[id][d] += (-dE_factor/(double(TOTAL_ATOMS)*dr_mod))*(dx/dr_mod);
-				else	std::cout << " WARNING ! particle did not move ! " 
-						  << " dim = " << d << " dx_mod = " <<  dx_mod << " dr_mod " << dr_mod << std::endl;
+				else{	
+				if((debug) && (mpi_id == 0))
+				std::cout << " WARNING ! particle did not move at step " << step << " ! " 
+					  << " dr_mod = " << dr_mod << std::endl;
+				throw std::runtime_error(std::string("CFES simulation failed!"));
+				}
 				}
 				old_xyz(id, d) = xyz[id][d];
 			}
-		}
-
+		}	
 		//==================================================
 		//Output
 		//==================================================
 
-		if(step % output_steps == 0){
-		e_factor_file << step << "  " << E << "  " << P_factor << "  " 
+		if(mpi_id == 0){
+		if((step+restart_from_step) % output_steps == 0){
+		double C_Q = get_C_Q();
+		e_factor_file << std::setprecision(8) 
+			      << step+restart_from_step << "  " << E << "  " << P_factor << "  " 
 			      << E_factor << "  " << E_factor/(k_b*T) << "  " 
 			      << dE_factor_orig << "  " << dE_factor << std::endl;
 
-		e_factor_bath_file << step << "  " << E_bath << "  " << P_factor_bath << "  " 
-				   << E_factor_bath << "  " << E_factor_bath/(k_b*T) << "  " 
-				   << C_Q_ref << "  " << C_Q << "  " << lambda_S << std::endl;
+		e_factor_bath_file << std::setprecision(8) 
+				   << step+restart_from_step << "  " << Delta_s << "  " 
+				   << C_Q << "  " << zeta_S << std::endl;
 
-		for(int j = 0; j < bins; j++){
-			probability_file << E_bins[j] << "  " << E_Prob[j] << std::endl;
-			probability_bath_file << E_bins[j] << "  " << E_Prob_bath[j] << std::endl;
-		}	
+		for(int j = 0; j < bins; j++)
+			probability_file << std::setprecision(8) 
+				         << E_bins[j] << "  " << E_Prob[j] << std::endl;
+			
 		probability_file << "\n" << std::endl;
-		probability_bath_file << "\n" << std::endl;
+		}}
+		//==================================================
 		}
-		}
-
+	
 	lammps_input_file_address = getFileAddress(directory, std::string("in.lammps_cfes.unfix"));
 	lmp->input->file(lammps_input_file_address.c_str());
 
+	for(int j = 0; j < bins; j++)
+		probability_final_file  << std::setprecision(8) 
+			         	<< E_bins[j] << "  " << E_tot_prodution_hist[j]/E_tot_prodution_hist.sum() << std::endl;
+			
+	probability_final_file << "\n" << std::endl;
+
 //==================================================
+
 	delete lmp;
 	MPI_Finalize();
 }

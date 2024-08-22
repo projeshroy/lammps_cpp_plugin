@@ -1,4 +1,4 @@
-#!/bin/bash         
+#!/bin/bash
 file=$1
 outfile=$2
 LAMMPS_HOME="/home/projesh/lammps"
@@ -8,7 +8,9 @@ MPI_HOME="/home/projesh/openmpi-4.1.5/build_gpu/bin"
 cp ${file} temp.cpp
 cp ${outfile} temp.exe
 
-${MPI_HOME}/mpicxx  -std=c++14 -I ./include/Eigen_3.3.1/ \
+${MPI_HOME}/mpicxx  -std=c++14 \
+-I ./include/Eigen_3.3.1/ \
+-I${LAMMPS_HOME}/src/ \
 -L${LAMMPS_HOME}/src/ \
 -L${LAMMPS_HOME}/lib/gpu/ \
 -L${LAMMPS_HOME}/lib/colvars/ \

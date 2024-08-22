@@ -41,15 +41,20 @@ void get_ref_probs(int& step){
 	E_mean = E_mean_equil*(100+E_mean_incr_percentage)/100;
 	E_sigma = E_sigma_equil*(100+E_sigma_incr_percentage)/100;
 	E_norm = E_norm_equil*(100+E_norm_incr_percentage)/100 - P_shift;
-	
+
+	if(mpi_id == 0){
 	std::cout << " E_mean_equil  " << E_mean_equil  << " E_mean  " << E_mean  << std::endl;
 	std::cout << " E_sigma_equil " << E_sigma_equil << " E_sigma " << E_sigma << std::endl;
 	std::cout << " E_norm_equil  " << E_norm_equil  << " E_norm  " << E_norm + P_shift  << std::endl;
 	std::cout << " P_shift " << P_shift << std::endl;
+	}
 
+	if(mpi_id == 0)
 	ref_prob_file << "# E   P" << std::endl;
+	
 	for(int i = 0; i < bins; i++){
 		E_Prob_ref[i] = (E_norm*exp(-pow(((E_bins[i] - E_mean)/(sqrt(2.0)*E_sigma)), 2)) + P_shift);
+		if(mpi_id == 0)
 		ref_prob_file << E_bins[i] << "   " << E_Prob_ref[i] << std::endl;
 	}
 	}
@@ -60,33 +65,13 @@ void get_ref_probs(int& step){
 
 	if(mode == std::string("constant")){
 	double P_shift = E_norm_equil*exp(-pow(((sigma_shift_parameter*E_sigma_equil)/(sqrt(2.0)*E_sigma_equil)), 2));
+	if(mpi_id == 0)
 	std::cout << " P_shift " << P_shift << std::endl;
 
 	for(int i = 0; i < bins; i++){
 		E_Prob_ref[i] = P_shift;
+		if(mpi_id == 0)	
 		ref_prob_file << E_bins[i] << "   " << E_Prob_ref[i] << std::endl;
-	}
-	}
-
-	//==================================================
-	//Mode == Dynamic_constant
-	//==================================================
-
-	if(mode == std::string("dynamic")){
-	double P_shift_target, P_shift;
-	double sigma_shift_parameter_new = (sigma_shift_parameter_increment/(double)tau)*
-				           (std::floor((double)step/(double)sigma_shift_parameter_steps));
-
-	if(sigma_shift_parameter_new <= sigma_shift_parameter_target){
-	P_shift_target = E_norm_equil*exp(-pow(((sigma_shift_parameter_target*E_sigma_equil)/(sqrt(2.0)*E_sigma_equil)), 2));
-	P_shift = E_norm_equil*exp(-pow(((sigma_shift_parameter_new*E_sigma_equil)/(sqrt(2.0)*E_sigma_equil)), 2));
-	std::cout << " Target P_shift " << P_shift_target << " New P_shift  " << P_shift << std::endl;
-
-	for(int i = 0; i < bins; i++){
-		E_Prob_ref[i] = P_shift;
-		ref_prob_file << E_bins[i] << "   " << E_Prob_ref[i] << std::endl;
-	}
-	ref_prob_file << "\n" << std::endl;
 	}
 	}
 }

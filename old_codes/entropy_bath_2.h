@@ -2,11 +2,6 @@
 #include "declarations.h"	
 #include "cfes.h"
 
-void set_C_Q_ref(){
-
-	C_Q_ref = (1.0/(pow((C_Q - 1.0), 2))) + C_Q + C_Q_factor;
-}
-
 void entropy_bath_initialize(){
 	//==================================================
 	//Bath initialization
@@ -25,9 +20,8 @@ void entropy_bath_initialize(){
 	for(int j = 0; j < bins; j++)
 		C_Q += E_Prob[j]*std::pow((E_Prob[j]/E_Prob_ref[j]), (m-1));
 
-	set_C_Q_ref();
-	if((debug) && (mpi_id == 0))
-	std::cout << " Initial C_Q_ref " << C_Q_ref << std::endl;
+	C_Q_ref = C_Q * C_Q_factor;
+	std::cout << " C_Q_ref changed to " << C_Q_ref << std::endl;
 
 	for(int j = 0; j < bins; j++)
 		lambda_S += E_Prob_bath[j]/(C_Q_ref - C_Q);	
@@ -44,7 +38,13 @@ void entropy_bath(int& step){
 	for(int j = 0; j < bins; j++)
 		C_Q += E_Prob[j]*std::pow((E_Prob[j]/E_Prob_ref[j]), (m-1));
 
-	set_C_Q_ref();
+	if(C_Q > C_Q_ref){
+//	if((C_Q/C_Q_ref) <= C_Q_factor){
+	std::cout << "C_Q = " << C_Q << " C_Q_ref = " << C_Q_ref << std::endl;
+	C_Q_ref = C_Q * C_Q_factor;
+	std::cout << " C_Q_ref changed to " << C_Q_ref << " at step " << step << std::endl;
+	}
+
 	P_factor_bath = C_Q/C_Q_ref;
 	E_factor_bath = -(TOTAL_ATOMS*k_b*T)*std::log(1.0 - P_factor_bath);
 	E_bath = E_factor_bath + E_mean_equil; 
