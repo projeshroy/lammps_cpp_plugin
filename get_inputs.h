@@ -18,7 +18,6 @@ void get_inputs(){
 	restart = true;
 	input_file >> read_string >> probability_input_file_address;
 	input_file >> read_string >> restart_from_step;
-	input_file >> read_string >> restart_prob_weight;
 	}
 	else {
 	restart = false;
@@ -30,6 +29,8 @@ void get_inputs(){
 	input_file >> read_string >> equil_steps;
 	input_file >> read_string >> zeta_equil_steps;
 	input_file >> read_string >> output_steps;
+	input_file >> read_string >> min_prob_weight;
+	input_file >> read_string >> max_prob_weight;
 	input_file >> read_string >> E_min;
 	input_file >> read_string >> E_max;
 	input_file >> read_string >> binwidth;
@@ -109,7 +110,7 @@ void get_inputs(){
 
 	for(int i = 0; i < bins ; i++){
 		probability_input_file >> energy >> E_Prob[i];
-		E_tot_hist[i] = std::floor(E_Prob[i] * restart_prob_weight);
+		E_tot_hist[i] = std::floor(E_Prob[i] * min_prob_weight);
 	}
 	}
 
@@ -119,10 +120,14 @@ void get_inputs(){
 	
 	if(mpi_id == 0){
 	std::cout << " debug 	    	"  << debug 		<< std::endl;
+	if(restart)
+	std::cout << " Restart step 	"  << restart_from_step << std::endl;
 	std::cout << " TOTAL_ATOMS  	"  << TOTAL_ATOMS	<< std::endl;
 	std::cout << " total_steps  	"  << total_steps   	<< std::endl;
 	std::cout << " equil_steps  	"  << equil_steps   	<< std::endl;
 	std::cout << " output_steps 	"  << output_steps  	<< std::endl;
+	std::cout << " min_prob_weight 	"  << min_prob_weight  	<< std::endl;
+	std::cout << " max_prob_weight 	"  << max_prob_weight  	<< std::endl;
 	std::cout << " E_min  	    	"  << E_min  		<< std::endl;
 	std::cout << " E_max	    	"  << E_max         	<< std::endl;
 	std::cout << " binwidth     	"  << binwidth      	<< std::endl;

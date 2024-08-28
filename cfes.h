@@ -21,7 +21,7 @@
 		E_mean_equil, E_sigma_equil, E_norm_equil,
 		zeta_S_ref, zeta_S_ref_shift, Delta_s,
        		E_mean_incr_percentage, E_sigma_incr_percentage, E_norm_incr_percentage, 
-		sigma_shift_parameter, restart_prob_weight;
+		sigma_shift_parameter, min_prob_weight, max_prob_weight;
 
 	int mpi_total, mpi_id, output_steps, equil_steps, zeta_equil_steps, total_steps, tau, m, 
 	    TOTAL_ATOMS, tau_equil, bins, sigma_shift_parameter_steps, restart_from_step;

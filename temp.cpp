@@ -81,11 +81,11 @@ int main(int argc, char **argv)
 	Mat_d old_xyz; old_xyz.resize(TOTAL_ATOMS, 3); old_xyz.setZero();
 
 	lammps_input_file_address = getFileAddress(directory, std::string("in.lammps_cfes"));
+	lmp->input->file(lammps_input_file_address.c_str());
 	if(restart){
 	std::string command = std::string("reset_timestep  ") + std::to_string(restart_from_step);
 	lmp->input->one(command.c_str());
 	}
-	lmp->input->file(lammps_input_file_address.c_str());
 	lmp->input->one("run 0");
 
 	if((!restart) && (mpi_id == 0)){
@@ -116,6 +116,11 @@ int main(int argc, char **argv)
 		//==================================================
 		//Update histogram and bath
 		//==================================================
+		if(E_tot_hist.sum() >= max_prob_weight){
+		#pragma omp parallel for shared(E_bins, E_Prob, E_tot_hist)
+		for(int j = 0; j < bins; j++)
+			E_tot_hist[j] = std::floor(E_Prob[j]*min_prob_weight);
+		}
 
 		int E_id = presorted_search_array<double>(E, E_min, E_max, binwidth);
 		if(!std::isnan(E_id)){

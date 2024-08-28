@@ -39,7 +39,7 @@ void equilibrate(){
 	E_tot_hist = E_tot_hist_equil;
 
 	for(int i = 0; i < bins; i++){
-//		E_tot_hist[i] = std::floor(E_Prob[i]*tau_equil);
+		E_tot_hist[i] = std::floor(E_Prob[i]*min_prob_weight);
 		if(mpi_id == 0)
 		probability_equil_file << std::setprecision(8) 
 			               << E_bins[i] << "  " << E_Prob[i] << std::endl;
@@ -103,6 +103,12 @@ void zeta_increment(){
 		//Update histogram and bath
 		//==================================================
 
+		if(E_tot_hist.sum() >= max_prob_weight){
+		#pragma omp parallel for shared(E_bins, E_Prob, E_tot_hist)
+		for(int j = 0; j < bins; j++)
+			E_tot_hist[j] = std::floor(E_Prob[j]*min_prob_weight);
+		}
+
 		int E_id = presorted_search_array<double>(E, E_min, E_max, binwidth);
 		if(!std::isnan(E_id))
 		E_tot_hist[E_id]++;
@@ -149,9 +155,9 @@ void zeta_increment(){
 	}
 	lammps_input_file_address = getFileAddress(directory, std::string("in.lammps_cfes_equil.unfix"));
 	lmp->input->file(lammps_input_file_address.c_str());
-
+	
+	#pragma omp parallel for shared(E_bins, E_Prob, E_tot_hist)
 	for(int i = 0; i < bins; i++){
-//		E_tot_hist[i] = std::floor(E_Prob[i]*tau_equil);
 		if(mpi_id == 0)
 		probability_equil_file << std::setprecision(8) 
 			               << E_bins[i] << "  " << E_Prob[i] << std::endl;

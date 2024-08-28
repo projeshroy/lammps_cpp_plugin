@@ -10,14 +10,19 @@ double get_C_Q(){
 	}
 
 	Vec_d C_Q_array; C_Q_array.resize(bins); C_Q_array.setZero();
-
+	
+	if (m > 1){
 	#pragma omp parallel for shared(E_Prob, E_Prob_ref, C_Q_array)
         for(int j = 0; j < bins; j++){
-		if (m > 0)
                 C_Q_array[j] = E_Prob[j]*std::pow((E_Prob[j]/E_Prob_ref[j]), (m-1));
 	}
-
+	
 	return C_Q_array.sum();
+	}
+	else if (m == 1)
+	return 1.0;
+	else 
+	return 0.0;	
 }
 
 
