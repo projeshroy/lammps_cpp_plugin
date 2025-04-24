@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash         
 file=$1
 outfile=$2
 LAMMPS_HOME="/home/projesh/lammps"
