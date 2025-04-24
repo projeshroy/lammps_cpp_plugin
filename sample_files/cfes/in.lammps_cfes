@@ -1,0 +1,12 @@
+reset_timestep	0
+dump   		traj peptide custom ${writestep} ${sname}_cfes.lammpstrj id type xu yu zu  
+dump_modify	traj append yes 
+dump            trajF peptide custom ${writestep} ${sname}_cfes_forces.lammpstrj id type fx fy fz 
+dump_modify	trajF append yes 
+
+restart         ${writestep} ${sname}_cfes.restart1 ${sname}_cfes.restart2
+
+fix    		file all print ${writestep} "$s $T $P ${kin} ${pot}" append "thermo_cfes.dat" screen "no" title "#" 
+fix		constraint peptide shake 0.0001 20 0 m 1.0080 
+fix		pepmd peptide nvt temp ${TrgtTemp} ${TrgtTemp} 100.0 
+fix    		mom all momentum 100 linear 1 1 1 angular rescale 

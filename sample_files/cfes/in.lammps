@@ -1,0 +1,44 @@
+units		real
+atom_style	full
+boundary	p p p
+
+########################################################
+pair_style	lj/charmm/coul/long 8.0 10.0 10.0
+bond_style      harmonic
+angle_style     charmm
+dihedral_style  charmm
+improper_style  harmonic
+kspace_style	pppm 0.0001
+#######################################################
+
+read_data	data_peptide.lammps
+
+neighbor        1.0 multi
+neigh_modify    every 1 delay 0 check yes
+
+variable        input index in.lammps
+variable        sname index CFES
+variable        rho equal density
+variable	Lx equal lx
+variable        pot equal pe
+variable        kin equal ke
+variable        T equal temp
+variable        s equal step
+variable	V equal vol
+variable	P equal press
+variable	N equal atoms
+variable        TrgtTemp equal 310.0
+variable        TrgtPress equal 1.0
+
+timestep	1.0
+variable	writestep equal	100
+
+group		peptide type 1:12
+compute         force peptide property/atom fx fy fz 
+compute    	Eall peptide pe/atom pair bond angle dihedral improper kspace
+compute    	Etot peptide reduce sum c_Eall
+variable   	pepE equal c_Etot
+
+thermo_style    custom ke pe temp press density vol lx ly lz v_pepE
+thermo		${writestep}
+#############################################################

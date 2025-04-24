@@ -1,0 +1,5 @@
+NOW=$(printf "%(%F_%H%M%S)T")
+git add .gitattributes
+git add -A
+git commit -am "$NOW track *.exe files using Git LFS"
+git push --force

@@ -1,0 +1,17 @@
+#!/bin/bash         
+
+file=$1
+outfile=$2
+LAMMPS_HOME="/home/projesh.chemistry.nitt/softwares/lammps"
+MPI_HOME="/home/projesh.chemistry.nitt/softwares/openmpi-5.0.3/build_gpu"
+
+cp ${file} temp.cpp
+cp ${outfile} temp.exe
+
+$MPI_HOME/bin/./mpicxx -gdwarf-2 -std=c++17 \
+-I ./include/Eigen_3.3.1/ \
+-I $LAMMPS_HOME/src/ \
+-L$LAMMPS_HOME/src/ \
+-L$LAMMPS_HOME/lib/colvars/ \
+-L$LAMMPS_HOME/src/STUBS/ \
+-o ${outfile} temp.cpp -lm -fopenmp -g3 -w -llammps_omp -ldl -lmpi_stubs -lmpi -lpthread -lcolvars

@@ -1,0 +1,12 @@
+TOTAL_ATOMS 	84
+total_steps 	1000000
+equil_steps     10000
+output_steps	100
+tau		50
+T 		310		
+m 		3
+E_min 		0
+delE 		5
+E_max 		200
+
+
