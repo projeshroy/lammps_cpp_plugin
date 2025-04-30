@@ -57,7 +57,7 @@ int main(int argc, char **argv)
 
 	if(!restart){
 	equilibrate();
-	get_ref_probs(step);
+	get_ref_probs();
 	zeta_increment();
 	}
 
@@ -172,15 +172,15 @@ int main(int argc, char **argv)
 		//==================================================
 
 		if(mpi_id == 0){
-		if((step+restart_from_step) % output_steps == 0){
+		if(step % output_steps == 0){
 		double C_Q = get_C_Q();
 		e_factor_file << std::setprecision(8) 
-			      << step+restart_from_step << "  " << E << "  " << P_factor << "  " 
+			      << step << "  " << E << "  " << P_factor << "  " 
 			      << E_factor << "  " << E_factor/(k_b*T) << "  " 
 			      << dE_factor_orig << "  " << dE_factor << std::endl;
 
 		e_factor_bath_file << std::setprecision(8) 
-				   << step+restart_from_step << "  " << Delta_s << "  " 
+				   << step << "  " << Delta_s << "  " 
 				   << C_Q << "  " << zeta_S << std::endl;
 
 		for(int j = 0; j < bins; j++)

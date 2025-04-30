@@ -28,7 +28,7 @@ void get_gaussian(Vec_d& E, Vec_d& Prob, double& mean, double& sigma, double& no
 //	norm = Prob.maxCoeff();
 }
 
-void get_ref_probs(int& step){
+void get_ref_probs(){
 
 	//==================================================
 	//Mode == Gaussian
