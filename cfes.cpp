@@ -99,7 +99,7 @@ int main(int argc, char **argv)
 
 	for (step = restart_from_step; step < total_steps; step++){
 		if(mpi_id == 0)
-		print_progress_bar<int>(step, total_steps, 10);
+		print_progress_bar<double>(step, total_steps, 10);
 
 		std::string command = std::string("run 1 pre no post no");
 		lmp->input->one(command.c_str());
@@ -135,8 +135,9 @@ int main(int argc, char **argv)
 		//==================================================
 
 		double zeta_S = entropy_bath(step, zeta_S_ref, zeta_S_ref_shift, tau);
-		cfes_main(step, zeta_S, E_id);
-	
+		bool cfes_equil = false;
+		bool skip = cfes_main(step, cfes_equil, zeta_S, E_id);
+
 		//==================================================
 		//Update force
 		//==================================================
@@ -154,7 +155,7 @@ int main(int argc, char **argv)
 			for(int d = 0; d < 3; d++){
 				double dx = xyz[id][d] - old_xyz(id, d);
 
-				if(step > 0){
+				if((step > 0) && (!skip)){
 				if((dr_mod > 0) && (!std::isinf(dr_mod)) && (!std::isnan(dr_mod)))
 				force[id][d] += (-dE_factor/(double(TOTAL_ATOMS)*dr_mod))*(dx/dr_mod);
 				else{	

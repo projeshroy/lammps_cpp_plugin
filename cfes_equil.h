@@ -18,7 +18,7 @@ void equilibrate(){
 
 	for(int i = 0; i < new_equil_steps; i++){
 		if(mpi_id == 0)
-		print_progress_bar<int>(i, new_equil_steps, 10);
+		print_progress_bar<double>(i, new_equil_steps, 10);
 
 		std::string command = std::string("run ")+std::to_string(tau_equil)+std::string(" pre no post no");
 		lmp->input->one(command.c_str());
@@ -119,7 +119,8 @@ void zeta_increment(){
 		//==================================================
 
 		double zeta_S = entropy_bath(i, new_zeta_S_ref, new_zeta_S_ref_shift, tau_equil);
-		cfes_main(i, zeta_S, E_id);
+		bool cfes_equil = true;
+		bool skip = cfes_main(i, cfes_equil, zeta_S, E_id);
 
 		//==================================================
 		//Update force
@@ -139,7 +140,7 @@ void zeta_increment(){
 				double dx = xyz[id][d] - old_xyz(id, d);
 
 				if(i > 0){
-				if((dr_mod > 0) && (!std::isinf(dr_mod)) && (!std::isnan(dr_mod)))
+				if((!skip) && (dr_mod > 0) && (!std::isinf(dr_mod)) && (!std::isnan(dr_mod)))
 				force[id][d] += (-dE_factor/(double(TOTAL_ATOMS)*dr_mod))*(dx/dr_mod);
 				else{	
 				if((debug) && (mpi_id == 0))

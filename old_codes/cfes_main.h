@@ -47,11 +47,17 @@ bool cfes_main(int& step, bool& cfes_equil, double& zeta_S, int& E_id){
 		  << " Actual pobability: " << E_Prob[E_id] << " Reference probability: " << E_Prob_ref[E_id] << std::endl;
 	
 	if(cfes_equil){
-	E_factor = max_dE*TOTAL_ATOMS*k_b*T;
-	dE_factor_orig = max_dE*TOTAL_ATOMS*k_b*T;
+	E_factor = ((double)TOTAL_ATOMS*k_b*T)*std::log(1.0 + P_factor);
+	dE_factor_orig = (E_factor - old_E_factor);
+	dE_factor = dE_factor_orig;
+
+	if(sqrt(dE_factor_orig*dE_factor_orig) > (max_dE*TOTAL_ATOMS*k_b*T)){
 	dE_factor = (dE_factor_orig/sqrt(dE_factor_orig*dE_factor_orig))*max_dE*TOTAL_ATOMS*k_b*T;	
 	if((m > 0) && (debug) && (mpi_id == 0))
-	std::cout << " Replacing dE with " << dE_factor << std::endl;
+	std::cout << " Max dE reached at step " << step << " with zeta_S " << zeta_S << " ! replacing dE with " << dE_factor << std::endl;
+	}
+	if((m > 0) && (debug) && (mpi_id == 0))
+	std::cout << " Zeta_S sign changed ! " << std::endl;
 	}
 	else 
 	{
